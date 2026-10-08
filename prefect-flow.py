@@ -35,25 +35,43 @@ DUCKDB_PATH = os.environ.get("DP2_DUCKDB", "dp2.duckdb")
 sqs = boto3.client("sqs")  # the endpoint comes from AWS_ENDPOINT_URL_SQS
 
 
-@task
+@task(retries=2, retry_delay_seconds=5)
 def populate_queue() -> str:
     """POST to the scatter API and return your queue URL."""
     logger = get_run_logger()
-    # TODO (Checkpoint A)
-    raise NotImplementedError
+    resp = requests.post(SCATTER_URL, timeout=30)
+    resp.raise_for_status()
+    payload = resp.json()
+    logger.info("Scatter API answered: %s", payload)
+    return payload["sqs_url"]
 
+COUNTERS = ["ApproximateNumberOfMessages",
+            "ApproximateNumberOfMessagesNotVisible",
+            "ApproximateNumberOfMessagesDelayed"]
 
 def get_counts(queue_url: str) -> dict:
     """Plain helper (not a task): return the three ApproximateNumberOf... counters as integers."""
-    # TODO (Checkpoint A)
-    raise NotImplementedError
+    attrs = sqs.get_queue_attributes(
+        QueueUrl=queue_url, AttributeNames=COUNTERS)["Attributes"]
+    return {"visible":   int(attrs["ApproximateNumberOfMessages"]),
+            "in_flight": int(attrs["ApproximateNumberOfMessagesNotVisible"]),
+            "delayed":   int(attrs["ApproximateNumberOfMessagesDelayed"])}
 
 
 @task
-def monitor_queue(queue_url: str, poll_s: int = 5, timeout_s: int = 1200) -> dict:
+def monitor_queue(queue_url: str, poll_s: int = 20, timeout_s: int = 1200) -> dict:
     """Log the three counters every poll_s seconds until nothing is delayed; raise after timeout_s."""
-    # TODO (Checkpoint A)
-    raise NotImplementedError
+    logger = get_run_logger()
+    deadline = time.monotonic() + timeout_s
+    while time.monotonic() < deadline:
+        c = get_counts(queue_url)
+        logger.info("visible=%d  in_flight=%d  delayed=%d",
+                    c["visible"], c["in_flight"], c["delayed"])
+        if c["delayed"] == 0:
+            logger.info("All messages released")
+            return c
+        time.sleep(poll_s)
+    raise TimeoutError(f"Messages still delayed after {timeout_s} s")
 
 
 @task
@@ -88,6 +106,7 @@ def submit_solution(phrase: str, platform: str = "prefect") -> int:
 def dp2_pipeline():
     queue_url = populate_queue()
     monitor_queue(queue_url)
+
     # TODO (Lesson 10): collect_messages -> dbt_build -> read_phrase -> submit_solution
 
 
