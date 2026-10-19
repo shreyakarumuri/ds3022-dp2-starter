@@ -180,7 +180,7 @@ The flow requests the messages from the scatter API, monitors the queue, collect
 I poll the three counters every 20 s and receive whatever is visible. This makes progress visible in the logs at an interval that is not too frequent and is near the minimum delay time of 30 seconds. The flow stops when 21 distinct fragments are stored and the queue is empty, or fails after 20 minutes.
 
 ## DAG
-![Directed Acyclic Graph]("docs/dag.jpg")
+![Directed Acyclic Graph](docs/dag.jpg)
 
 ## Receive → persist → delete
 The collector follows a receive → persist → delete order. It receives a message, extracts its attributes, stores the fragment in DuckDB, and then deletes the message using its ReceiptHandle.
@@ -193,11 +193,11 @@ If the flow crashes before persisting, the message can be received again after i
 - dbt: Transforms and tests the fragments, ensuring the phrase contains exactly 21 contiguous fragments before submission. Without it, I would lose the automated quality gate that prevents invalid results from being submitted.
 
 ## Test Failures and Pass
-![Test 1]("docs/Test1_Failure.jpg")
-![Test 2]("docs/Test2_Failure.jpg")
+![Test 1](docs/Test1_Failure.jpg)
+![Test 2](docs/Test2_Failure.jpg)
 
 ## Full-delay evidence run
-![Dashboard 2]("Prefect_Dashboard.jpg")
+![Dashboard 2](docs/Long_Run_Dashboard.png)
 
 ## Chaos
 What broke
@@ -231,8 +231,8 @@ All 21 fragments stored; all queue counters are zero
 
 The dbt build passed all six resources with no warnings or errors. The solution was submitted with HTTP 200, and the Prefect flow finished in the Completed state.
 
-![Chaos Pass]("Chaos_Pass.png")
-![Chaos Dashboard]("Chaos_Dashboard.png")
+![Chaos Pass](docs/Chaos_Pass.png)
+![Chaos Dashboard](docs/Chaos_Dashboard.png)
 
 
 ## Results
