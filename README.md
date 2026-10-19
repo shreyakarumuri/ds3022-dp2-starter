@@ -197,7 +197,7 @@ If the flow crashes before persisting, the message can be received again after i
 ![Test 2]("docs/Test2_Failure.jpg")
 
 ## Full-delay evidence run
-![Dashboard 2](docs/Long_run_Dashboard.png)
+![Dashboard 2]("Prefect_Dashboard.jpg")
 
 ## Chaos
 What broke
