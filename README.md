@@ -195,6 +195,8 @@ If the flow crashes before persisting, the message can be received again after i
 ## Test Failures and Pass
 ![Test 1](docs/Test1_Failure.jpg)
 ![Test 2](docs/Test2_Failure.jpg)
+![Pass](docs/Successful_run.jpg)
+
 
 ## Full-delay evidence run
 ![Dashboard 2](docs/Long_Run_Dashboard.png)
