@@ -160,7 +160,80 @@ You may observe and rerun your pipeline as often as you like, but in the end you
 - [dbt-duckdb adapter](https://github.com/duckdb/dbt-duckdb) and [dbt data tests](https://docs.getdbt.com/docs/build/data-tests)
 - [Moto server mode](https://docs.getmoto.org/en/latest/docs/server_mode.html), [ElasticMQ](https://github.com/softwaremill/elasticmq)
 
-## My README
-I poll the three counters every 20 s and receive whatever is visible. This makes progress visible in the logs at an interval that is not too frewuent and is near the minimum delay time of 30 seconds. The flow stops when 21 distinct fragments are stored and the queue is empty, or fails after 20 minutes.
+# My README
+## Setup and Run Instructions
+This project is data pipeline that retrieves 21 messages from an SQS queue, parses their contents, and reassembles a complete phrase from the fragments, one word per message.
+
+1. Fork and Clone the repository
+2. Create and activate the Python virtual environment in four terminals
+3. Set the terminals up accoridng to SETUP.md
+4. Install the project dependencies according to the starter repository instructions.
+5. Copy the example environment file to .env and set UVA_ID to your computing ID.
+
+Run the pipeline from the project root with the virtual environment activated:
+
+python prefect-flow.py
+
+The flow requests the messages from the scatter API, monitors the queue, collects and stores fragments, runs the dbt build and tests, reads the assembled phrase, and submits the solution. The pipeline should complete without manual intervention.
+
+## Polling Stategy
+I poll the three counters every 20 s and receive whatever is visible. This makes progress visible in the logs at an interval that is not too frequent and is near the minimum delay time of 30 seconds. The flow stops when 21 distinct fragments are stored and the queue is empty, or fails after 20 minutes.
+
+## DAG
+![Directed Acyclic Graph]("docs/dag.jpg")
+
+## Receive → persist → delete
+The collector follows a receive → persist → delete order. It receives a message, extracts its attributes, stores the fragment in DuckDB, and then deletes the message using its ReceiptHandle.
+
+If the flow crashes before persisting, the message can be received again after its visibility timeout. If it crashes after persisting but before deleting, the message may be processed again. The staging model deduplicates fragments by order_no, preventing duplicate records from affecting the final phrase. Malformed messages are logged and deleted to prevent them from repeatedly reappearing.
+
+## Tool roles
+- Prefect: Orchestrates the pipeline tasks and provides logging and monitoring. Without it, I would lose automated task coordination and visibility into failures.
+- DuckDB: Stores raw fragments and provides the database for SQL transformations. Without it, I would lose database-backed storage and the ability to inspect collected data.
+- dbt: Transforms and tests the fragments, ensuring the phrase contains exactly 21 contiguous fragments before submission. Without it, I would lose the automated quality gate that prevents invalid results from being submitted.
+
+## Test Failures and Pass
+![Test 1]("docs/Test1_Failure.jpg")
+![Test 2]("docs/Test2_Failure.jpg")
+
+## Full-delay evidence run
+![Dashboard 2]("Prefect_Dashboard.jpg")
+
+## Chaos
+What broke
+
+During the first chaos round, the collector stored all 21 expected fragments, but the task failed because the queue was not empty. The error was:
+
+Final queue counts: visible=0 in_flight=0 delayed=1
+RuntimeError: Queue is not empty after collection:
+{'visible': 0, 'in_flight': 0, 'delayed': 1}
+
+The error was raised in prefect-flow.py at line 195. Although all 21 fragments had been stored, one delayed message remained in the queue.
+
+Why it broke
+
+My collector stopped receiving messages once stored == expected. However, in chaos mode, the queue could still contain an additional delayed message, such as a duplicate or malformed message. Because the collector stopped after reaching 21 fragments, it did not receive and process the remaining message. The final queue check correctly detected that the queue was not empty and raised a RuntimeError.
+
+This showed that collecting the expected number of valid fragments was not sufficient: the collector also needed to handle remaining messages and confirm that the queue was empty.
+
+How I fixed it
+
+I changed the collector to check the final queue counts and return successfully only when the visible, in-flight, and delayed counters were all zero. If delayed messages remain after the expected fragments have been stored, the collector must continue polling and processing those messages rather than stopping immediately.
+
+The collector also handles duplicate messages and malformed messages separately. Duplicates must not increase the number of stored fragments, and malformed messages must be logged and deleted rather than repeatedly reappearing in the queue. Valid fragments are persisted in DuckDB before their messages are deleted, preserving the receive → persist → delete order.
+
+Proof
+
+In the successful chaos-mode run, the collector stored all 21 expected fragments and then logged:
+
+Final queue counts: visible=0 in_flight=0 delayed=0
+All 21 fragments stored; all queue counters are zero
+
+The dbt build passed all six resources with no warnings or errors. The solution was submitted with HTTP 200, and the Prefect flow finished in the Completed state.
+
+![Chaos Pass]("Chaos_Pass.png")
+![Chaos Dashboard]("Chaos_Dashboard.png")
 
 
+## Results
+PASS  kfu2ph / prefect  receipt: 848E15D9D6
